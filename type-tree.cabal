@@ -1,0 +1,34 @@
+name:               type-tree
+version:            0.1.0.0
+synopsis:           Tree representations of datatypes
+description:        @type-tree@ provides TH splices for generating tree representations of
+                    the types contained in datatypes. This is useful for, for example,
+                    generating class instances for a deeply nested datatype.
+license:            MIT
+license-file:       LICENSE
+author:             Jude Taylor
+maintainer:         me@jude.xyz
+category:           Language
+homepage:           https://github.com/pikajude/type-tree
+build-type:         Custom
+extra-source-files: ChangeLog.md
+cabal-version:      >= 1.10
+
+custom-setup
+  setup-depends: base == 4.*, Cabal, cabal-doctest >= 1 && < 1.1
+
+library
+  exposed-modules:  Language.Haskell.TypeTree
+                    CabalTest
+  other-modules:    Language.Haskell.TypeTree.CheatingLift
+  hs-source-dirs:   src
+  build-depends:    base >= 4.4 && < 5, Cabal, containers, mtl, template-haskell, array
+  default-language: Haskell2010
+  ghc-options:      -Wall
+
+test-suite doctest
+  type:             exitcode-stdio-1.0
+  main-is:          doctests.hs
+  hs-source-dirs:   tests
+  build-depends:    base, doctest
+  default-language: Haskell2010
