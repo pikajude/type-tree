@@ -1,28 +1,25 @@
-{-# Language TypeFamilies #-}
-{-# Language ScopedTypeVariables #-}
-{-# Language LambdaCase #-}
-{-# Language FlexibleContexts #-}
-{-# Language FlexibleInstances #-}
-{-# Language DeriveDataTypeable #-}
-{-# Language DeriveLift #-}
-{-# Language TemplateHaskell #-}
+{-# LANGUAGE ViewPatterns #-}
+{-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE DeriveLift #-}
+{-# LANGUAGE TemplateHaskell #-}
 
 module Language.Haskell.TypeTree
-    ( -- ** GHCi setup
+      -- ** GHCi setup
       -- $setup
       -- * Usage
       -- $usage
       -- * Producing trees
-      ttReify
-    , ttReifyOpts
+    ( ttReify
+    -- , ttReifyOpts
     , ttLit
-    , ttLitOpts
-    , ttDescribe
-    , ttDescribeOpts
-      -- * Useful helper functions
-    -- , constructors
-    , conComp
-    , unLeaf
+    -- , ttLitOpts
+    -- , ttDescribe
+    -- , ttDescribeOpts
       -- * Customizing trees
     , Leaf(..)
     , ReifyOpts(..)
@@ -33,8 +30,8 @@ import Control.Concurrent
 import Control.Monad
 import Control.Monad.Reader
 import Data.Data (Data)
-import Data.Graph
 import Data.Function
+import Data.Graph
 import Data.List
 import Data.Map (Map)
 import qualified Data.Map as M
@@ -47,29 +44,7 @@ import Language.Haskell.TH
 import Language.Haskell.TH.Syntax hiding (lift)
 import qualified Language.Haskell.TH.Syntax as TH
 import Language.Haskell.TypeTree.CheatingLift
-
-instance Lift Type
-
-data Leaf
-    = TypeLeaf (Name, [Type])
-    -- ^ @TypeLeaf (name, xs)@ is a field with type @ConT name@, applied to types @xs@.
-    | FreeVar (Name, [Type])
-    -- ^ @TypeLeaf (name, xs)@ is a field with type @VarT name@, applied to types @xs@.
-    | Recursion Leaf -- ^ Recursive field.
-    deriving (Show, Eq, Data, Ord)
-
-unLeaf (TypeLeaf x) = x
-unLeaf (FreeVar x) = x
-unLeaf (Recursion x) = unLeaf x
-
-unCon (TypeLeaf x) = Just x
-unCon (FreeVar _) = Nothing
-unCon (Recursion x) = unCon x
-
-instance Lift Leaf where
-    lift (TypeLeaf (n, x)) = [|TypeLeaf ($(liftName n), x)|]
-    lift (FreeVar (n, x)) = [|FreeVar ($(liftName n), x)|]
-    lift (Recursion x) = [|Recursion $(TH.lift x)|]
+import Language.Haskell.TypeTree.Leaf
 
 data ReifyOpts a = ReifyOpts
     { expandPrim :: Bool -- ^ Descend into primitive type constructors?
@@ -91,52 +66,24 @@ defaultOpts :: ReifyOpts Leaf
 defaultOpts =
     ReifyOpts {expandPrim = False, terminals = S.fromList [''String], leafFn = Just}
 
--- | Given a type tree, produce a set of all constructor names (that is,
--- concrete types) and their type arguments.
-treeCons :: Tree Leaf -> S.Set (Name, [Type])
-treeCons ts = S.fromList $ mapMaybe unleaf $ flatten ts
-  where
-    unleaf (TypeLeaf (n, x)) = Just (n, x)
-    unleaf _ = Nothing
-
--- | Like 'treeCons', but only returns expected arities rather than the
--- full argument list.
-treeArities :: Tree Leaf -> S.Set (Name, Int)
-treeArities ts = S.fromList $ mapMaybe unleaf $ flatten ts where
-    unleaf (TypeLeaf (n, x)) = Just (n, length x)
-    unleaf _ = Nothing
-
-type Key = (Name, Int)
-
--- | A graph of the strongly connected components of the graph representing
--- the type tree of the given type. See 'stronglyConnComp' (on which this
--- is a pun)
-conComp :: Tree Leaf -> (Graph, Vertex -> (Key, Key, [Key]), Key -> Maybe Vertex)
-conComp = graphFromEdges . go where
-    go (Node x xs) = (unleaf x, unleaf x, map (unleaf . rootLabel) xs) : nubBy ((==) `on` _fst) (concatMap go xs)
-    _fst (x,_,_) = x
-    second f (a,b) = (a, f b)
-    unleaf = second length . unLeaf
-
 -- | Produces a string literal representing a type tree. Useful for
 -- debugging purposes.
-ttDescribe = ttDescribeOpts defaultOpts
-
+-- ttDescribe = ttDescribeOpts defaultOpts
 -- | 'ttDescribe' with the given options.
-ttDescribeOpts o n = do
-    tree <- ttReifyOpts o n
-    stringE $ drawTree $ fmap showLeaf tree
-  where
-    showLeaf (TypeLeaf n) = show n
-    showLeaf (FreeVar (n, x)) = "<<unbound var " ++ show (nameBase n) ++ ">> " ++ show x
-    showLeaf (Recursion x) = "<<recursive " ++ show x ++ ">>"
-
+-- ttDescribeOpts o n = do
+--     tree <- ttReifyOpts o n
+--     stringE $ drawTree $ fmap showLeaf tree
+--   where
+--     showLeaf (TypeLeaf n) = show n
+--     showLeaf (FreeVar (n, x)) = "<<unbound var " ++ show (nameBase n) ++ ">> " ++ show x
+--     showLeaf (Recursion x) = "<<recursive " ++ show x ++ ">>"
 -- | Embed the produced tree as an expression.
 ttLit = liftTree <=< ttReify
 
--- | 'ttLit' with provided opts.
-ttLitOpts opts = liftTree <=< ttReifyOpts opts
+instance Lift Name
 
+-- | 'ttLit' with provided opts.
+-- ttLitOpts opts = liftTree <=< ttReifyOpts opts
 liftTree (Node n xs) = [|Node $(TH.lift n) $(listE $ map liftTree xs)|]
 
 -- | Build a "type tree" of the given datatype.
@@ -146,103 +93,88 @@ liftTree (Node n xs) = [|Node $(TH.lift n) $(listE $ map liftTree xs)|]
 -- of the node after the first will be replaced with 'Recursion'.
 ttReify = ttReifyOpts defaultOpts
 
--- | 'ttReify' with the provided options.
-ttReifyOpts opts n = do
-    tree <- go (mempty :: Map Name Type) mempty (n, [])
-    case tree of
-        Nothing -> fail tyerr
-        Just x ->
-            case filterTree x of
-                Nothing -> fail filtererr
-                Just x -> return x
-  where
-    filterTree (Node x xs) =
-        case leafFn opts x of
-            Just y -> Just $ Node y $ nub $ mapMaybe filterTree xs
-            Nothing -> Nothing
-    tyerr =
-        "Unable to expand the given type. Did you pass in a PrimTyCon with expandPrim disabled?"
-    filtererr =
-        "Provided filtering function rejected the root node. No tree can be produced"
-    go hs visited p = do
-        go' hs visited p
-    go' hs visited p@(nm, typeArgs)
-        | S.member nm (terminals opts) =
-            pure $ Just $ Node (TypeLeaf (nm, typeArgs)) []
-        | S.member p visited || looped nm =
-            let con = if nameSpace nm `elem` [Just VarName, Nothing] then FreeVar else TypeLeaf
-             in pure $ Just $ Node (Recursion (con (nm, typeArgs))) []
-          -- hack: is our recursion depth at least 1? passing in invalid
-          -- names like 'show or 'Just falls into this case otherwise
-        | not (S.null visited) && nameSpace nm `elem` [Just VarName, Nothing] =
-            case M.lookup nm hs of
-                Just resolved -> go hs visited $ unwrap resolved
-                Nothing -> do
-                    fields <- mapM (go hs (insert' p) . unwrap) typeArgs
-                    return $
-                        Just $ Node (FreeVar (nm, typeArgs)) $ catMaybes fields
-        | isUnboxedTuple nm && not (expandPrim opts) = pure Nothing
-        | otherwise = do
-            x <- reify nm
-            case x of
-                TyConI dec -> do
-                    let (con, holes) = unhead dec
-                        fields = concat $ unfield dec
-                        resolutions = zip holes typeArgs
-                    children <-
-                        mapM (go (M.fromList resolutions <> hs) (insert' p)) fields
-                    return $
-                        Just $ Node (TypeLeaf (con, typeArgs)) $ catMaybes children
-                PrimTyConI nm _ _
-                    | expandPrim opts || nm == ''(->) -> do
-                        fields <- mapM (go hs (insert' p) . unwrap) typeArgs
-                        pure $
-                            Just $
-                            Node (TypeLeaf (nm, typeArgs)) $ catMaybes fields
-                    | otherwise -> pure Nothing
-                DataConI {} -> failWith "a data constructor"
-                ClassI {} -> failWith "a class name"
-                ClassOpI {} -> failWith "a class method"
-                VarI {} -> failWith "a plain variable"
-                PatSynI {} -> failWith "a pattern synonym"
-                TyVarI {} -> failWith "how did you get here?"
-                FamilyI _ insts ->
-                    case resolve typeArgs insts of
-                        Just dec -> do
-                            let (con, holes) = unhead' dec
-                                fields = concat $ unfield dec
-                                resolutions = tweakResolutions $ zip holes typeArgs
-                            children <-
-                                mapM
-                                    (go (M.fromList resolutions <> hs) (insert' p))
-                                    fields
-                            return $
-                                Just $
-                                Node (TypeLeaf (con, typeArgs)) $
-                                catMaybes children
-                        Nothing ->
-                            fail
-                                "The 'impossible' happened: data instance resolution failed"
-        -- implies that we're trying to unify a free variable with
-        -- itself. this indicates a recursive data structure; bail out once
-        -- it's detected
-      where
-        failWith s = fail $ "ttReify expects a type constructor, but got " ++ s
-        looped n = go n
-          where
-            go name =
-                case M.lookup name hs of
-                    Just (VarT x)
-                        | x == n -> True
-                        | otherwise -> go x
-                    _ -> False
-        insert' x = S.insert x visited
-        isUnboxedTuple nm = nameModule nm == Just "GHC.Tuple" && '#' `elem` (nameBase nm)
+data ReifyEnv = ReifyEnv
+              { typeEnv :: Map Name Type
+              , nodes :: S.Set (Binding, [Type])
+              } deriving Show
 
-tweakResolutions ((x, y):xs)
-    | x == y = tweakResolutions xs
-tweakResolutions ((VarT n, y):xs) = (n, y) : tweakResolutions xs
-tweakResolutions [] = []
+-- | 'ttReify' with the provided options.
+ttReifyOpts :: ReifyOpts Leaf -> Name -> Q (Tree Leaf)
+ttReifyOpts opts n = runReaderT (go (Bound n) []) (ReifyEnv mempty mempty)
+  where
+    go n as = do
+        r <- ask
+        lift $
+            qRunIO $ do
+                print (n, as)
+                print r
+                threadDelay 1000000
+        go' n as
+    go' v@(Unbound n) givenArgs = withVisit v givenArgs $
+        Node (FreeVar (n,[])) <$>
+            mapM
+                (\arg -> recurseField =<< uncurry resolve (unwrap arg))
+                givenArgs
+    go' v@(Bound n) givenArgs = withVisit v givenArgs $ do
+        dec <- lift $ reify n
+        case dec of
+            TyConI x -> do
+                let (name, wantedArgs) = decodeHead x
+                    cons = decodeBody x
+                -- invariant: constructor fields (obviously) must be of
+                -- kind *. if the type isn't fully applied, generate some
+                -- placeholders and recurse. this happens when you pass in
+                -- type function at top level (like ttReify ''Maybe)
+                if length givenArgs /= length wantedArgs
+                    then do
+                        go (Bound n) =<< lift (sequence $ fmap VarT (newName "arg") <$ wantedArgs)
+                    else withReaderT (\m -> foldr resolution m $ zip wantedArgs givenArgs) $ do
+                             fields <-
+                                 forM cons $ \(x, args) -> do
+                                     recurseField =<< resolve x args
+                             return $ Node (TypeLeaf (n, [])) fields
+    recurseField Nothing = pure $ Node Recursion []
+    recurseField (Just (a,b)) = go a b
+    decodeHead (DataD _ n holes _ _ _) = (n, map unTV holes)
+    decodeHead (TySynD n holes _) = (n, map unTV holes)
+    decodeBody (DataD _ _ _ _ cons _) = concatMap getFieldTypes cons
+    decodeBody (TySynD _ _ ty) = [unwrap ty]
+    getFieldTypes (NormalC _ xs) = map (\(_, y) -> unwrap y) xs
+    getFieldTypes (RecC _ xs) = map (\(_, _, y) -> unwrap y) xs
+    getFieldTypes (InfixC (_, a) _ (_, b)) = [unwrap a, unwrap b]
+    unTV (KindedTV n _) = n
+    unTV (PlainTV n) = n
+    resolution (x,y) r@ReifyEnv{typeEnv = t} = r { typeEnv = M.insert x y t }
+    withVisit a b m = do
+        n <- asks nodes
+        if S.member (a,b) n
+            then pure $ Node Recursion []
+            else withReaderT (\ r -> r { nodes = S.insert (a,b) (nodes r) }) m
+    resolve (Bound x) args = pure $ Just (Bound x, args)
+    resolve (Unbound x) args = go' x args [] where
+        go' x args xs = do
+            m <- asks typeEnv
+            case M.lookup x m of
+                Just (VarT y)
+                    | elem y xs -> pure Nothing
+                    | otherwise -> go' y args (y:xs)
+                Just (unwrap -> (h, args')) -> pure $ Just (h, args' ++ args)
+                Nothing -> pure $ Just (Unbound x, [])
+    unwrap = go
+      where
+        go (ConT x) = (Bound x, [])
+        go (VarT y) = (Unbound y, [])
+        go (AppT x y) =
+            let (hd, args) = go x
+             in (hd, args ++ [y])
+        go ListT = (Bound ''[], [])
+        go z = error $ show z
+
+data Binding
+    = Bound Name
+    | Unbound Name
+    deriving (Show, Ord, Eq)
+{-
 
 resolve tys (d@(DataInstD _ _ args _ _ _):ds)
     | and (zipWith unify tys args) = Just d
@@ -287,7 +219,7 @@ uncon (RecGadtC _ fs ret) = map (\(_, _, ty) -> unwrap ty) fs ++ map unwrap tys
   where
     (_, tys) = unwrap ret
 uncon (InfixC (_, t1) n (_, t2))
-    | n == '(:) = [unwrap t1]
+    | n == ': = [unwrap t1]
     | otherwise = [unwrap t1, unwrap t2]
 
 unwrap = go
@@ -298,7 +230,7 @@ unwrap = go
     go ListT = (''[], [])
     go (TupleT n) = (tupleTypeName n, [])
     go (UnboxedTupleT n) = (unboxedTupleTypeName n, [])
-    go ArrowT = (''(->), [])
+    go ArrowT = (''->, [])
     go (SigT t _k) = go t
     go x = error $ show x
     second f (a, b) = (a, f b)
@@ -427,5 +359,7 @@ Ghci32.Bar
    `- GHC.Types.[]
       |
       `- GHC.Base.String
+
+-}
 
 -}
