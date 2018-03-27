@@ -11,21 +11,18 @@
 {-# LANGUAGE TemplateHaskell #-}
 
 module Language.Haskell.TypeTree
-    ( -- ** GHCi setup
+      -- ** GHCi setup
       -- $setup
-
       -- * Usage
       -- $usage
-
       -- * Producing trees
-      ttReify
+    ( ttReify
     , ttReifyOpts
     , ttLit
     , ttLitOpts
       -- ** Debugging trees
     , ttDescribe
     , ttDescribeOpts
-
       -- ** Building graphs
     , Key
     , Arity
@@ -52,6 +49,7 @@ import Language.Haskell.TH.PprLib
 import Language.Haskell.TH.Syntax hiding (Arity, lift)
 import qualified Language.Haskell.TH.Syntax as TH
 import Language.Haskell.TypeTree.CheatingLift
+import Language.Haskell.TypeTree.Datatype
 import Language.Haskell.TypeTree.Leaf
 import qualified Text.PrettyPrint as HPJ
 
@@ -73,11 +71,11 @@ defaultOpts = ReifyOpts {expandPrim = False, terminals = mempty}
 
 -- | Produces a string literal representing a type tree. Useful for
 -- debugging purposes.
-ttDescribe :: Name -> ExpQ
+ttDescribe :: IsDatatype t => t -> ExpQ
 ttDescribe = ttDescribeOpts defaultOpts
 
 -- | 'ttDescribe' with the given options.
-ttDescribeOpts :: ReifyOpts -> Name -> ExpQ
+ttDescribeOpts :: IsDatatype t => ReifyOpts -> t -> ExpQ
 ttDescribeOpts o n = do
     tree <- ttReifyOpts o n
     stringE $
@@ -87,7 +85,7 @@ ttDescribeOpts o n = do
         to_HPJ_Doc $ treeDoc tree
 
 -- | Embed the produced tree as an expression.
-ttLit :: Name -> ExpQ
+ttLit :: IsDatatype t => t -> ExpQ
 ttLit = liftTree <=< ttReify
 
 -- | Some type and its arguments, as representable in a graph.
@@ -99,7 +97,7 @@ type Arity = Int
 -- | @$(ttEdges ''Foo) :: [(('Name', 'Arity'), 'Key', ['Key'])]@
 --
 -- @$(ttEdges ''Foo)@ produces a list suitable for passing to 'graphFromEdges'.
-ttEdges :: Name -> ExpQ
+ttEdges :: IsDatatype t => t -> ExpQ
 ttEdges name = do
     tr <- ttReify name
     sigE (listE $ map lift_ $ node tr) [t|[((Name, Arity), Key, [Key])]|]
@@ -111,7 +109,7 @@ ttEdges name = do
 --
 -- @$(ttConnComp ''Foo)@ produces a topologically sorted list
 -- of the strongly connected components of the graph representing @Foo@.
-ttConnComp :: Name -> ExpQ
+ttConnComp :: IsDatatype t => t -> ExpQ
 ttConnComp name = [|stronglyConnComp $(ttEdges name)|]
 
 node :: Tree Leaf -> [((Name, Arity), Key, [Key])]
@@ -127,7 +125,7 @@ unCon (VarL x) = x
 unCon (Recursive r) = unCon r
 
 -- | 'ttLit' with provided opts.
-ttLitOpts :: ReifyOpts -> Name -> ExpQ
+ttLitOpts :: IsDatatype t => ReifyOpts -> t -> ExpQ
 ttLitOpts opts = liftTree <=< ttReifyOpts opts
 
 liftTree :: Lift t => Tree t -> ExpQ
@@ -143,13 +141,14 @@ data ReifyEnv = ReifyEnv
 -- Concrete types will appear in the tree as 'ConL'. Unbound variables
 -- will appear as 'VarL'. If the datastructure is recursive, occurrences
 -- of the node after the first will be wrapped in 'Recursive'.
-ttReify :: Name -> Q (Tree Leaf)
+ttReify :: IsDatatype t => t -> Q (Tree Leaf)
 ttReify = ttReifyOpts defaultOpts
 
 -- | 'ttReify' with the provided options.
-ttReifyOpts :: ReifyOpts -> Name -> Q (Tree Leaf)
-ttReifyOpts opts name =
-    fromJust <$> runReaderT (go (Bound name) []) (ReifyEnv mempty mempty)
+ttReifyOpts :: IsDatatype t => ReifyOpts -> t -> Q (Tree Leaf)
+ttReifyOpts opts t = do
+    (a, b) <- asDatatype t
+    fromJust <$> runReaderT (go a b) (ReifyEnv mempty mempty)
   where
     go n args = do
         go' n args
@@ -190,7 +189,7 @@ ttReifyOpts opts name =
                                          mapMaybeM (uncurry resolve) cons
                             Nothing ->
                                 fail $
-                                "no data instance in scope which matches: " ++
+                                "sorry, I cannot find a data instance in scope which matches: " ++
                                 show (treeDoc (Node (ConL (n, givenArgs)) []))
                     x -> error $ show (x, givenArgs)
     processDec x n givenArgs = do
@@ -305,26 +304,6 @@ unify [] (VarT y:ys) = (:) (VarT y) <$> unify [] ys
 unify [] [] = Just []
 unify [] _ = Nothing
 unify a b = error $ show (a, b)
-
-unwrap :: Type -> (Binding, [Type])
-unwrap = go
-  where
-    go (ConT x) = (Bound x, [])
-    go (VarT y) = (Unbound y, [])
-    go (AppT x y) =
-        let (hd, args) = go x
-         in (hd, args ++ [y])
-    go ListT = (Bound ''[], [])
-    go ArrowT = (Bound ''(->), [])
-    go (TupleT n) = (Bound (tupleTypeName n), [])
-    go (UnboxedTupleT n) = (Bound (unboxedTupleTypeName n), [])
-    go (SigT t _k) = go t
-    go z = error $ show z
-
-data Binding
-    = Bound Name
-    | Unbound Name
-    deriving (Show, Ord, Eq)
 {- $setup
 
 >>> :set -XTemplateHaskell -XTypeFamilies -XGADTs
@@ -352,11 +331,20 @@ Ghci4.Foo a_0
    |
    `- GHC.Types.Int
 
+=== Passing type arguments
+
+@ttReify@ and friends accept any value with an 'IsDatatype' instance.
+
+>>> putStr $(ttDescribe [t|Maybe Int|])
+GHC.Base.Maybe GHC.Types.Int
+|
+`- GHC.Types.Int
+
 === GADTs
 
 >>> data MyGADT a where Con1 :: String -> MyGADT String; Con2 :: Int -> MyGADT [Int]
 >>> putStr $(ttDescribe ''MyGADT)
-Ghci8.MyGADT
+Ghci10.MyGADT
 |
 +- GHC.Base.String
 |  |
@@ -376,25 +364,23 @@ Ghci8.MyGADT
    |
    `- GHC.Types.Int
 
-Constructor return types are treated as another field in this case.
+When reifying GADTs, constructors' return types are treated as another
+field.
 
 === Data family instances
 
 >>> class Foo a where data Bar a :: * -> *
 >>> instance Foo Int where data Bar Int a = IntBar { bar :: Maybe (Int, a) }
->>> type IntBar = Bar Int
->>> putStr $(ttDescribe ''IntBar)
-Ghci16.IntBar
+>>> putStr $(ttDescribe [t|Bar Int|])
+Ghci14.Bar GHC.Types.Int a_0
 |
-`- Ghci12.Bar GHC.Types.Int a_0
+`- GHC.Base.Maybe (GHC.Types.Int, a_0)
    |
-   `- GHC.Base.Maybe (GHC.Types.Int, a_0)
+   `- GHC.Tuple.(,) GHC.Types.Int a_0
       |
-      `- GHC.Tuple.(,) GHC.Types.Int a_0
-         |
-         +- GHC.Types.Int
-         |
-         `- $a_0
+      +- GHC.Types.Int
+      |
+      `- $a_0
 
 === Recursive datatypes
 
@@ -414,20 +400,6 @@ Ghci20.Foo a_0
          |
          `- GHC.Types.Int
 
-Currently, if you want to instantiate type variables in the given datatype, the
-best way to do so is to define a type synonym:
-
->>> type MaybeChar = Maybe Char
->>> putStr $(ttDescribe ''MaybeChar)
-Ghci24.MaybeChar
-|
-`- GHC.Base.Maybe GHC.Types.Char
-   |
-   `- GHC.Types.Char
-
-...but future versions of this library may provide a more ergonomic way to
-pass type arguments.
-
 == Passing options
 
 If needed, @type-tree@ allows you to specify that primitive type constructors
@@ -435,7 +407,7 @@ should be included in its output.
 
 >>> data Baz = Baz { field :: [Int] }
 >>> putStr $(ttDescribeOpts defaultOpts { expandPrim = True } ''Baz)
-Ghci28.Baz
+Ghci24.Baz
 |
 `- GHC.Types.[] GHC.Types.Int
    |
@@ -453,7 +425,7 @@ your tree.
 
 >>> data Bar = Bar (Either String [String])
 >>> putStr $(ttDescribeOpts defaultOpts { terminals = S.fromList [''String] } ''Bar)
-Ghci32.Bar
+Ghci28.Bar
 |
 `- Data.Either.Either GHC.Base.String ([GHC.Base.String])
    |

@@ -19,6 +19,7 @@ custom-setup
 
 library
   exposed-modules:  Language.Haskell.TypeTree
+                    Language.Haskell.TypeTree.Datatype
   other-modules:    Language.Haskell.TypeTree.CheatingLift
                     Language.Haskell.TypeTree.Leaf
   hs-source-dirs:   src
