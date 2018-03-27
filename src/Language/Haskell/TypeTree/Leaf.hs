@@ -1,31 +1,50 @@
-{-# Language DeriveDataTypeable #-}
+{-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE DeriveDataTypeable #-}
 
 module Language.Haskell.TypeTree.Leaf where
 
-import Language.Haskell.TH.Syntax
+import Data.Data
+import Data.Tree
+import Language.Haskell.TH.Lib
 import Language.Haskell.TH.Ppr
 import Language.Haskell.TH.PprLib
+import Language.Haskell.TH.Syntax
 import Language.Haskell.TypeTree.CheatingLift
-import Data.Data
 
-instance Lift Type
+liftType :: Type -> ExpQ
+liftType (VarT x) = [|VarT $(liftName x)|]
+liftType (ConT x) = [|ConT $(liftName x)|]
+liftType (AppT x y) = [|AppT $(liftType x) $(liftType y)|]
+liftType (TupleT n) = [|TupleT n|]
+liftType ListT = [|ListT|]
+liftType (SigT t k) = [|SigT $(liftType t) $(liftType k)|]
+liftType (UnboxedTupleT n) = [|UnboxedTupleT n|]
+liftType x = error $ show x
 
 data Leaf
-    = TypeLeaf (Name, [Type])
-    -- ^ @TypeLeaf (name, xs)@ is a field with type @ConT name@, applied to types @xs@.
-    | FreeVar (Name, [Type])
-    -- ^ @TypeLeaf (name, xs)@ is a field with type @VarT name@, applied to types @xs@.
-    | Recursion -- ^ Recursive field.
-    deriving (Eq, Data, Ord)
-
-instance Show Leaf where
-    showsPrec p (TypeLeaf (n, ts)) =
-        showsPrec p (pprName n) . showString " " . showList (map ppr ts)
-    showsPrec p (FreeVar (n, ts)) =
-        showString "$" . showsPrec p (pprName n) . showString " " . showList (map ppr ts)
-    showsPrec p (Recursion) = showString "recursion"
+    = ConL (Name, [Type])
+    -- ^ @ConL (name, xs)@ is a field with type @ConT name@, applied to types @xs@.
+    | VarL (Name, [Type])
+    -- ^ @VarL (name, xs)@ is a field with type @VarT name@, applied to types @xs@.
+    | Recursive Leaf -- ^ Recursive field.
+    deriving (Eq, Data, Ord, Show)
 
 instance Lift Leaf where
-    lift (TypeLeaf (n, x)) = [|TypeLeaf ($(liftName n), x)|]
-    lift (FreeVar (n, x)) = [|FreeVar ($(liftName n), x)|]
-    lift (Recursion) = [|Recursion|]
+    lift (ConL (n, x)) = [|ConL ($(liftName n), $(listE $ map liftType x))|]
+    lift (VarL (n, x)) = [|VarL ($(liftName n), $(listE $ map liftType x))|]
+    lift (Recursive r) = [|Recursive $(lift r)|]
+
+treeDoc :: Tree Leaf -> Doc
+treeDoc = vcat . go
+  where
+    go (Node x ts0) = leafDoc x : drawSubtrees ts0
+    leafDoc (ConL (n, [a,b]))
+        | n == ''(->) = pprParendType a <+> text "->" <+> pprParendType b
+    leafDoc (ConL (n, x)) = pprName n <+> hsep (map pprParendType x)
+    leafDoc (VarL (n, x)) = text "$" <> pprName n <+> hsep (map pprParendType x)
+    leafDoc (Recursive x) = text "<" <> text "recursive" <+> leafDoc x <> text ">"
+    drawSubtrees [] = mempty
+    drawSubtrees [t] = char '|' : shift (text "`- ") (text "   ") (go t)
+    drawSubtrees (t:ts) =
+        char '|' : shift (text "+- ") (text "|  ") (go t) ++ drawSubtrees ts
+    shift first other = zipWith (<>) (first : repeat other)
