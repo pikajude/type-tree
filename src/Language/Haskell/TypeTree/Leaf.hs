@@ -11,6 +11,7 @@ import Language.Haskell.TH.PprLib
 import Language.Haskell.TH.Syntax
 import Language.Haskell.TypeTree.CheatingLift
 import Language.Haskell.TypeTree.Datatype
+import Prelude.Compat hiding ((<>))
 
 liftType :: Type -> ExpQ
 liftType (VarT x) = [|VarT $(liftName x)|]

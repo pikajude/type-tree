@@ -8,7 +8,7 @@ license:            MIT
 license-file:       LICENSE
 author:             Jude Taylor
 maintainer:         me@jude.xyz
-tested-with:        GHC == 7.10.3, GHC == 8.0.2, GHC == 8.2.2, GHC == 8.4.1
+tested-with:        GHC == 8.0.2, GHC == 8.2.2, GHC == 8.4.1
 category:           Language
 homepage:           https://github.com/pikajude/type-tree
 build-type:         Custom
@@ -19,26 +19,26 @@ custom-setup
   setup-depends: base == 4.*, Cabal, cabal-doctest >= 1 && < 1.1
 
 library
-  exposed-modules:  Language.Haskell.TypeTree
-  other-modules:    Language.Haskell.TypeTree.CheatingLift
-                    Language.Haskell.TypeTree.Datatype
-                    Language.Haskell.TypeTree.Leaf
-  hs-source-dirs:   src
-  build-depends:    base             >= 4.4 && < 5
-                  , Cabal
-                  , array
-                  , containers
-                  , mtl
-                  , pretty
-                  , template-haskell
-  default-language: Haskell2010
-  ghc-options:      -Wall -Wno-missing-signatures -Wno-name-shadowing
-
-executable gencode
-  main-is:          gencode.hs
-  hs-source-dirs:   exe
-  build-depends:    base, Cabal, array, containers, template-haskell, type-tree
-  default-language: Haskell2010
+  exposed-modules:    Language.Haskell.TypeTree
+  other-modules:      Language.Haskell.TypeTree.CheatingLift
+                      Language.Haskell.TypeTree.Datatype
+                      Language.Haskell.TypeTree.Leaf
+  hs-source-dirs:     src
+  build-depends:      base             >= 4.9 && < 5
+                    , Cabal
+                    , base-compat
+                    , containers
+                    , mtl
+                    , pretty
+                    , template-haskell
+  default-language:   Haskell2010
+  default-extensions: NoImplicitPrelude
+  other-extensions:   FlexibleInstances
+                      CPP
+                      TypeSynonymInstances
+                      TemplateHaskell
+                      DeriveDataTypeable
+  ghc-options:        -Wall -fno-warn-missing-signatures -fno-warn-name-shadowing
 
 test-suite doctest
   type:             exitcode-stdio-1.0

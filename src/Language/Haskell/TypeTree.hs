@@ -2,12 +2,12 @@
 {-# LANGUAGE ViewPatterns #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE TypeFamilies #-}
+{-# Language CPP #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE DeriveDataTypeable #-}
-{-# LANGUAGE DeriveLift #-}
 {-# LANGUAGE TemplateHaskell #-}
 
 module Language.Haskell.TypeTree
@@ -56,6 +56,7 @@ import qualified Language.Haskell.TH.Syntax as TH
 import Language.Haskell.TypeTree.CheatingLift
 import Language.Haskell.TypeTree.Datatype
 import Language.Haskell.TypeTree.Leaf
+import Prelude.Compat
 import qualified Text.PrettyPrint as HPJ
 
 data ReifyOpts = ReifyOpts
@@ -185,7 +186,9 @@ ttReifyOpts opts t = do
                     DataConI {} -> badInput "a data constructor"
                     ClassOpI {} -> badInput "a class method"
                     ClassI {} -> badInput "a class name"
+#if MIN_VERSION_template_haskell(2,12,0)
                     PatSynI {} -> badInput "a pattern synonym"
+#endif
                     TyVarI {} ->
                         badInput "an unbound type variable (how did you get here?)"
                     VarI {} -> badInput "an ordinary value"
@@ -386,15 +389,11 @@ Ghci14.Bar GHC.Types.Int a_0
       |
       `- $a_0
 
->>> :module +GHC.Exts Data.Map
->>> putStr $(ttDescribe [t|Item (Map Int Int)|])
-GHC.Exts.Item (Data.Map.Internal.Map GHC.Types.Int GHC.Types.Int)
+>>> :module +GHC.Exts
+>>> putStr $(ttDescribe [t|Item [Int]|])
+GHC.Exts.Item ([GHC.Types.Int])
 |
-`- GHC.Tuple.(,) GHC.Types.Int GHC.Types.Int
-   |
-   +- GHC.Types.Int
-   |
-   `- GHC.Types.Int
+`- GHC.Types.Int
 
 === Recursive datatypes
 

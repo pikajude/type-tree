@@ -12,6 +12,7 @@ module Language.Haskell.TypeTree.CheatingLift
 
 import Language.Haskell.TH
 import Language.Haskell.TH.Syntax
+import Prelude.Compat
 
 $(do TyConI (DataD _ _ _ _ [NormalC x _] _) <- reify ''Name
      arg1 <- newName "arg"

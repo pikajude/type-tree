@@ -8,6 +8,7 @@ module Language.Haskell.TypeTree.Datatype where
 import Data.Data
 import Data.Maybe
 import Language.Haskell.TH
+import Prelude.Compat
 
 -- | More ergonomic representation of bound and unbound names of things.
 data Binding
