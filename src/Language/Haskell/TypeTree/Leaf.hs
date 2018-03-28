@@ -10,6 +10,7 @@ import Language.Haskell.TH.Ppr
 import Language.Haskell.TH.PprLib
 import Language.Haskell.TH.Syntax
 import Language.Haskell.TypeTree.CheatingLift
+import Language.Haskell.TypeTree.Datatype
 
 liftType :: Type -> ExpQ
 liftType (VarT x) = [|VarT $(liftName x)|]
@@ -21,30 +22,31 @@ liftType (SigT t k) = [|SigT $(liftType t) $(liftType k)|]
 liftType (UnboxedTupleT n) = [|UnboxedTupleT n|]
 liftType x = error $ show x
 
+liftBinding (Bound n) = [|Bound $(liftName n)|]
+liftBinding (Unbound n) = [|Unbound $(liftName n)|]
+
 data Leaf
-    = ConL (Name, [Type])
-    -- ^ @ConL (name, xs)@ is a field with type @ConT name@, applied to types @xs@.
-    | VarL (Name, [Type])
-    -- ^ @VarL (name, xs)@ is a field with type @VarT name@, applied to types @xs@.
+    = TypeL (Binding, [Type])
+    -- ^ @TypeL (name, xs)@ is a field with type @name@ applied to types @xs@.
     | Recursive Leaf -- ^ Recursive field.
     deriving (Eq, Data, Ord, Show)
 
 instance Lift Leaf where
-    lift (ConL (n, x)) = [|ConL ($(liftName n), $(listE $ map liftType x))|]
-    lift (VarL (n, x)) = [|VarL ($(liftName n), $(listE $ map liftType x))|]
+    lift (TypeL (n, x)) = [|TypeL ($(liftBinding n), $(listE $ map liftType x))|]
     lift (Recursive r) = [|Recursive $(lift r)|]
 
 treeDoc :: Tree Leaf -> Doc
 treeDoc = vcat . go
   where
     go (Node x ts0) = leafDoc x : drawSubtrees ts0
-    leafDoc (ConL (n, [a,b]))
-        | n == ''(->) = pprParendType a <+> text "->" <+> pprParendType b
-    leafDoc (ConL (n, x)) = pprName n <+> hsep (map pprParendType x)
-    leafDoc (VarL (n, x)) = text "$" <> pprName n <+> hsep (map pprParendType x)
+    leafDoc (TypeL (n, [a,b]))
+        | unBinding n == ''(->) = pprParendType a <+> text "->" <+> pprParendType b
+    leafDoc (TypeL (n, x)) = pprBind n <+> hsep (map pprParendType x)
     leafDoc (Recursive x) = text "<" <> text "recursive" <+> leafDoc x <> text ">"
     drawSubtrees [] = mempty
     drawSubtrees [t] = char '|' : shift (text "`- ") (text "   ") (go t)
     drawSubtrees (t:ts) =
         char '|' : shift (text "+- ") (text "|  ") (go t) ++ drawSubtrees ts
     shift first other = zipWith (<>) (first : repeat other)
+    pprBind (Bound n) = pprName n
+    pprBind (Unbound n) = text "$" <> pprName n

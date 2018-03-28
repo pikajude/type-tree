@@ -19,8 +19,8 @@ custom-setup
 
 library
   exposed-modules:  Language.Haskell.TypeTree
-                    Language.Haskell.TypeTree.Datatype
   other-modules:    Language.Haskell.TypeTree.CheatingLift
+                    Language.Haskell.TypeTree.Datatype
                     Language.Haskell.TypeTree.Leaf
   hs-source-dirs:   src
   build-depends:    base             >= 4.4 && < 5
@@ -31,7 +31,7 @@ library
                   , pretty
                   , template-haskell
   default-language: Haskell2010
-  ghc-options:      -Wall
+  ghc-options:      -Wall -Wno-missing-signatures -Wno-name-shadowing
 
 executable gencode
   main-is:          gencode.hs

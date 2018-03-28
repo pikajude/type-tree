@@ -11,12 +11,18 @@
 {-# LANGUAGE TemplateHaskell #-}
 
 module Language.Haskell.TypeTree
-      -- ** GHCi setup
+    ( -- ** GHCi setup
       -- $setup
+
       -- * Usage
       -- $usage
+
+      -- * Reify input
+      IsDatatype(..)
+    , Binding(..)
+    , guess
       -- * Producing trees
-    ( ttReify
+    , ttReify
     , ttReifyOpts
     , ttLit
     , ttLitOpts
@@ -34,7 +40,6 @@ module Language.Haskell.TypeTree
     , defaultOpts
     ) where
 
-import Control.Applicative
 import Control.Monad
 import Control.Monad.Reader
 import Data.Graph
@@ -56,7 +61,7 @@ import qualified Text.PrettyPrint as HPJ
 data ReifyOpts = ReifyOpts
     { expandPrim :: Bool -- ^ Descend into primitive type constructors?
     , terminals :: S.Set Name -- ^ If a name in this set is encountered, stop descending.
-    }
+    } deriving (Show, Eq)
 
 -- | Default reify options.
 --
@@ -120,8 +125,7 @@ node = nubBy (\(x, _, _) (y, _, _) -> x == y) . go
     second f (a, b) = (a, f b)
 
 unCon :: Leaf -> (Name, [Type])
-unCon (ConL x) = x
-unCon (VarL x) = x
+unCon (TypeL (x, y)) = (unBinding x, y)
 unCon (Recursive r) = unCon r
 
 -- | 'ttLit' with provided opts.
@@ -153,90 +157,94 @@ ttReifyOpts opts t = do
     go n args = do
         go' n args
     go' v@(Unbound n) gargs
-        | n `S.member` terminals opts = pure $ Just (Node (VarL (n, gargs)) [])
+        | n `S.member` terminals opts = pure $ Just (Node (TypeL (v, gargs)) [])
         | otherwise =
             withVisit v gargs $ \givenArgs ->
-                Just . Node (VarL (n, givenArgs)) <$>
+                Just . Node (TypeL (Unbound n, givenArgs)) <$>
                 mapMaybeM (uncurry resolve . unwrap) givenArgs
     go' v@(Bound n) gargs
-        | n `S.member` terminals opts = pure $ Just (Node (ConL (n, gargs)) [])
+        | n `S.member` terminals opts = pure $ Just (Node (TypeL (v, gargs)) [])
         | otherwise =
             withVisit v gargs $ \givenArgs -> do
                 dec <- lift $ reify n
                 case dec of
                     PrimTyConI n' _ _
                         | expandPrim opts || n' == ''(->) ->
-                            Just . Node (ConL (n', givenArgs)) <$>
+                            Just . Node (TypeL (v, givenArgs)) <$>
                             mapMaybeM (uncurry resolve . unwrap) givenArgs
                         | otherwise -> pure Nothing
                     TyConI x -> processDec x n givenArgs
                     FamilyI _ insts ->
-                        case matches givenArgs insts of
-                            Just (dec, gargs) -> do
-                                let (n, holes) = decodeHead' gargs dec
-                                cons <- decodeBody dec
-                                if length gargs /= length holes
-                                    then do
-                                        arglist <- mapM (lift . fillVar) holes
-                                        go (Bound n) arglist
-                                    else withReaderT
-                                             (\m ->
-                                                  foldr
-                                                      resolveType
-                                                      m
-                                                      (zip holes givenArgs)) $
-                                         Just . Node (ConL (n, gargs)) <$>
-                                         mapMaybeM (uncurry resolve) cons
+                        case findMatchingInstance givenArgs insts of
+                            Just dec -> processDec dec n givenArgs
                             Nothing ->
                                 fail $
-                                "sorry, I cannot find a data instance in scope which matches: " ++
-                                show (treeDoc (Node (ConL (n, givenArgs)) []))
-                    x -> error $ show (x, givenArgs)
+                                "sorry, I cannot find a data/type instance " ++
+                                "in scope which matches: " ++
+                                show (treeDoc (Node (TypeL (v, givenArgs)) []))
+                    DataConI {} -> badInput "a data constructor"
+                    ClassOpI {} -> badInput "a class method"
+                    ClassI {} -> badInput "a class name"
+                    PatSynI {} -> badInput "a pattern synonym"
+                    TyVarI {} ->
+                        badInput "an unbound type variable (how did you get here?)"
+                    VarI {} -> badInput "an ordinary value"
+    badInput s = fail $ "ttReify expects a type constructor, but was given " ++ s
     processDec x n givenArgs = do
         let (_, wantedArgs) = decodeHead givenArgs x
         cons <- decodeBody x
-        -- invariant: constructor fields (obviously) must be of
-        -- kind *. if the type isn't fully applied, generate some
-        -- placeholders and recurse. this happens when you pass in
-        -- type function at top level (like ttReify ''Maybe)
-        if length givenArgs /= length wantedArgs
-            then do
-                vars <- lift $ sequence (fmap VarT . newName . nameBase <$> wantedArgs)
-                go (Bound n) vars
-            else withReaderT (\m -> foldr resolution m $ zip wantedArgs givenArgs) $
-                 Just . Node (ConL (n, givenArgs)) <$> mapMaybeM (uncurry resolve) cons
+        withReaderT (\m -> foldr instantiate m $ zip wantedArgs givenArgs) $
+            -- invariant: constructor fields (obviously) must be of
+            -- kind *. if the type isn't fully applied, generate some
+            -- placeholders and recurse. this happens when you pass in
+            -- type function at top level (like ttReify ''Maybe)
+         do
+            if length givenArgs < length wantedArgs
+                then do
+                    vars <-
+                        lift $ sequence (fillVar <$> drop (length givenArgs) wantedArgs)
+                    go (Bound n) (givenArgs ++ vars)
+                else Just . Node (TypeL (Bound n, givenArgs)) <$>
+                     mapMaybeM (uncurry resolve) cons
     mapMaybeM m xs = catMaybes <$> mapM m xs
-    seqTup (a, b) = (,) <$> a <*> b
     fillVar (VarT n) = VarT <$> newName (nameBase n)
     fillVar x = pure x
-    fill r@ReifyEnv {typeEnv = te} (VarT n) =
+    simplify r@ReifyEnv {typeEnv = te} (VarT n) =
         case M.lookup n te of
-            Just ty -> fill r ty
+            Just ty -> simplify r ty
             Nothing -> VarT n
-    fill _ x@ConT {} = x
-    fill r (AppT x y) = AppT (fill r x) (fill r y)
-    fill _ x@TupleT {} = x
-    fill _ x@UnboxedTupleT {} = x
-    fill _ ListT = ListT
-    fill _ ArrowT = ArrowT
-    fill r (SigT t k) = SigT (fill r t) k
-    fill _ x = error $ show x
+    simplify _ x@ConT {} = x
+    simplify r (AppT x y) = AppT (simplify r x) (simplify r y)
+    simplify _ x@TupleT {} = x
+    simplify _ x@UnboxedTupleT {} = x
+    simplify _ ListT = ListT
+    simplify _ ArrowT = ArrowT
+    simplify r (SigT t k) = SigT (simplify r t) k
+    simplify _ x = error $ show x
+    decodeHead _ (DataInstD _ n tys _ _ _) = (n, tys)
     decodeHead _ (DataD _ n holes _ cons _)
         | any isGadtCon cons = (n, [])
         | otherwise = (n, map unTV holes)
     decodeHead _ (NewtypeD _ n holes _ _ _) = (n, map unTV holes)
     decodeHead _ (TySynD n holes _) = (n, map unTV holes)
+    decodeHead _ (TySynInstD n (TySynEqn holes _)) = (n, holes)
     decodeHead _ x = error $ "decodeHead " ++ show x
-    decodeHead' _ (DataInstD _ n tys _ _ _) = (n, tys)
     decodeBody (DataD _ decName _ _ cons _) = concat <$> mapM (getFieldTypes decName) cons
     decodeBody (DataInstD _ decName _ _ cons _) =
         concat <$> mapM (getFieldTypes decName) cons
     decodeBody (NewtypeD _ decName _ _ con _) = getFieldTypes decName con
     decodeBody (TySynD _ _ ty) = pure [unwrap ty]
+    decodeBody (TySynInstD _ (TySynEqn _ ty)) = pure [unwrap ty]
     decodeBody x = error $ "decodeBody " ++ show x
-    matches typeArgs (d@(DataInstD _ _ tys _ _ _):ds) =
-        fmap ((,) d) (unify typeArgs tys) <|> matches typeArgs ds
-    matches _ [] = Nothing
+    findMatchingInstance typeArgs (d@(DataInstD _ _ tys _ _ _):ds)
+        | matchesTypeInstance typeArgs tys = Just d
+        | otherwise = findMatchingInstance typeArgs ds
+    findMatchingInstance typeArgs (d@(TySynInstD _ (TySynEqn lhs _)):ds)
+        | matchesTypeInstance typeArgs lhs = Just d
+        | otherwise = findMatchingInstance typeArgs ds
+    findMatchingInstance _ [] = Nothing
+    findMatchingInstance _ _ =
+        error "FamilyI contained a Dec of the wrong type, this shouldn't happen"
     getFieldTypes _ (NormalC _ xs) = pure $ map (\(_, y) -> unwrap y) xs
     getFieldTypes _ (RecC _ xs) = pure $ map (\(_, _, y) -> unwrap y) xs
     getFieldTypes _ (InfixC (_, a) nm (_, b))
@@ -257,18 +265,16 @@ ttReifyOpts opts t = do
     isGadtCon RecGadtC {} = True
     isGadtCon (ForallC _ _ c) = isGadtCon c
     isGadtCon _ = False
-    unTV (KindedTV n _) = n
-    unTV (PlainTV n) = n
-    resolution (x, y) r@ReifyEnv {typeEnv = t} = r {typeEnv = M.insert x y t}
-    resolveType (VarT x, y)
-        | VarT x == y = error "???"
-        | otherwise = resolution (x, y)
-    resolveType _ = id
+    unTV (KindedTV n _) = VarT n
+    unTV (PlainTV n) = VarT n
+    instantiate (VarT x, y) r@ReifyEnv {typeEnv = t} = r {typeEnv = M.insert x y t}
+    instantiate (AppT a b, AppT c d) r = instantiate (a, c) (instantiate (b, d) r)
+    instantiate _ r = r
     withVisit a b m = do
         r@ReifyEnv {nodes = nodes'} <- ask
-        let b' = map (fill r) b
+        let b' = map (simplify r) b
             a' =
-                case fill
+                case simplify
                          r
                          (case a of
                               Bound x -> ConT x
@@ -277,7 +283,7 @@ ttReifyOpts opts t = do
                     VarT n -> Unbound n
                     _ -> undefined
         if S.member (a', b') nodes'
-            then pure $ Just $ Node (Recursive $ leaf (a', b')) []
+            then pure $ Just $ Node (Recursive $ TypeL (a', b')) []
             else withReaderT (\q -> q {nodes = S.insert (a', b') (nodes q)}) $ m b'
     resolve (Bound x) args = go (Bound x) args
     resolve (Unbound x) args = go' x args []
@@ -287,23 +293,21 @@ ttReifyOpts opts t = do
             case M.lookup x' m of
                 Just (VarT y)
                     | elem y xs ->
-                        pure $ Just $ Node (Recursive $ leaf (Unbound x', args')) []
+                        pure $ Just $ Node (Recursive $ TypeL (Unbound x', args')) []
                     | otherwise -> go' y args' (y : xs)
                 Just (unwrap -> (h, args'')) -> go h (args'' ++ args')
                 Nothing -> go (Unbound x') args'
 
-leaf :: (Binding, [Type]) -> Leaf
-leaf (Bound n, x) = ConL (n, x)
-leaf (Unbound n, y) = VarL (n, y)
-
-unify (x:xs) (VarT _:ys) = (:) x <$> unify xs ys
-unify (ConT x:xs) (ConT y:ys)
-    | x == y = (:) (ConT x) <$> unify xs ys
-    | otherwise = Nothing
-unify [] (VarT y:ys) = (:) (VarT y) <$> unify [] ys
-unify [] [] = Just []
-unify [] _ = Nothing
-unify a b = error $ show (a, b)
+matchesTypeInstance [] [] = True
+matchesTypeInstance xs (VarT _:ys) = matchesTypeInstance (drop 1 xs) ys
+matchesTypeInstance (ConT x:xs) (ConT y:ys)
+    | x == y = matchesTypeInstance xs ys
+    | otherwise = False
+matchesTypeInstance (AppT a b:xs) (AppT c d:ys) =
+    matchesTypeInstance [a] [c] &&
+    matchesTypeInstance [b] [d] && matchesTypeInstance xs ys
+matchesTypeInstance (x:xs) (y:ys) = x == y && matchesTypeInstance xs ys
+matchesTypeInstance _ _ = False
 {- $setup
 
 >>> :set -XTemplateHaskell -XTypeFamilies -XGADTs
@@ -367,7 +371,7 @@ Ghci10.MyGADT
 When reifying GADTs, constructors' return types are treated as another
 field.
 
-=== Data family instances
+=== Data/type family instances
 
 >>> class Foo a where data Bar a :: * -> *
 >>> instance Foo Int where data Bar Int a = IntBar { bar :: Maybe (Int, a) }
@@ -382,21 +386,31 @@ Ghci14.Bar GHC.Types.Int a_0
       |
       `- $a_0
 
+>>> :module +GHC.Exts Data.Map
+>>> putStr $(ttDescribe [t|Item (Map Int Int)|])
+GHC.Exts.Item (Data.Map.Internal.Map GHC.Types.Int GHC.Types.Int)
+|
+`- GHC.Tuple.(,) GHC.Types.Int GHC.Types.Int
+   |
+   +- GHC.Types.Int
+   |
+   `- GHC.Types.Int
+
 === Recursive datatypes
 
 >>> data Foo a = Foo { a :: Either Int (Bar a) }; data Bar b = Bar { b :: Either (Foo b) Int }
 >>> putStr $(ttDescribe ''Foo)
-Ghci20.Foo a_0
+Ghci23.Foo a_0
 |
-`- Data.Either.Either GHC.Types.Int (Ghci20.Bar a_0)
+`- Data.Either.Either GHC.Types.Int (Ghci23.Bar a_0)
    |
    +- GHC.Types.Int
    |
-   `- Ghci20.Bar a_0
+   `- Ghci23.Bar a_0
       |
-      `- Data.Either.Either (Ghci20.Foo a_0) GHC.Types.Int
+      `- Data.Either.Either (Ghci23.Foo a_0) GHC.Types.Int
          |
-         +- <recursive Ghci20.Foo a_0>
+         +- <recursive Ghci23.Foo a_0>
          |
          `- GHC.Types.Int
 
@@ -407,7 +421,7 @@ should be included in its output.
 
 >>> data Baz = Baz { field :: [Int] }
 >>> putStr $(ttDescribeOpts defaultOpts { expandPrim = True } ''Baz)
-Ghci24.Baz
+Ghci27.Baz
 |
 `- GHC.Types.[] GHC.Types.Int
    |
@@ -425,7 +439,7 @@ your tree.
 
 >>> data Bar = Bar (Either String [String])
 >>> putStr $(ttDescribeOpts defaultOpts { terminals = S.fromList [''String] } ''Bar)
-Ghci28.Bar
+Ghci31.Bar
 |
 `- Data.Either.Either GHC.Base.String ([GHC.Base.String])
    |
