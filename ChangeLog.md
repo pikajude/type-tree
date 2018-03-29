@@ -1,5 +1,9 @@
 # Revision history for type-tree
 
-## 0.1.0.0 -- YYYY-mm-dd
+## 0.1.0.1 -- 2018-03-29
 
-* First version. Released on an unsuspecting world.
+* Fixing a minor documentation typo
+
+## 0.1.0.0 -- 2018-03-27
+
+* Initial release
