@@ -143,9 +143,8 @@ data ReifyEnv = ReifyEnv
 
 -- | Build a "type tree" of the given datatype.
 --
--- Concrete types will appear in the tree as 'ConL'. Unbound variables
--- will appear as 'VarL'. If the datastructure is recursive, occurrences
--- of the node after the first will be wrapped in 'Recursive'.
+-- Occurrences of a given node after the first will be wrapped in
+-- 'Recursive' and have no children.
 ttReify :: IsDatatype t => t -> Q (Tree Leaf)
 ttReify = ttReifyOpts defaultOpts
 
