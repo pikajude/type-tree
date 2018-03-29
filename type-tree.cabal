@@ -18,6 +18,10 @@ cabal-version:      >= 1.10
 custom-setup
   setup-depends: base == 4.*, Cabal, cabal-doctest >= 1 && < 1.1
 
+source-repository head
+  type:     git
+  location: https://github.com/pikajude/type-tree.git
+
 library
   exposed-modules:    Language.Haskell.TypeTree
   other-modules:      Language.Haskell.TypeTree.CheatingLift
