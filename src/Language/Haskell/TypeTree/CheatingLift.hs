@@ -1,3 +1,4 @@
+{-# Language CPP #-}
 {-# Language TemplateHaskell #-}
 
 {-
@@ -14,7 +15,13 @@ import Language.Haskell.TH
 import Language.Haskell.TH.Syntax
 import Prelude.Compat
 
-$(do TyConI (DataD _ _ _ _ [NormalC x _] _) <- reify ''Name
+#if MIN_VERSION_template_haskell(2,11,0)
+#define _KIND _
+#else
+#define _KIND
+#endif
+
+$(do TyConI (DataD _ _ _ _KIND [NormalC x _] _) <- reify ''Name
      arg1 <- newName "arg"
      arg2 <- newName "arg"
      sequence
@@ -25,7 +32,7 @@ $(do TyConI (DataD _ _ _ _ [NormalC x _] _) <- reify ''Name
                      [conP x [varP arg1, varP arg2]]
                      (normalB
                           [|appsE
-                                [ conE $(liftData x)
+                                [ conE (mkName "Name")
                                 , $(appE (varE $ mkName "liftOcc") (varE arg1))
                                 , $(appE (varE $ mkName "liftFlv") (varE arg2))
                                 ]|])
@@ -39,7 +46,11 @@ liftOcc (OccName s) = [|OccName $(stringE s)|]
 liftFlv :: NameFlavour -> ExpQ
 liftFlv NameS = [|NameS|]
 liftFlv (NameG x (PkgName s) (ModName y)) =
-    [|NameG $(liftData x) (PkgName $(stringE s)) (ModName $(stringE y))|]
+    [|NameG $(liftNS x) (PkgName $(stringE s)) (ModName $(stringE y))|]
 liftFlv (NameQ (ModName x)) = [|NameQ (ModName $(stringE x))|]
 liftFlv (NameU i) = [|NameU i|]
 liftFlv (NameL i) = [|NameL i|]
+
+liftNS VarName = [|VarName|]
+liftNS DataName = [|DataName|]
+liftNS TcClsName = [|TcClsName|]

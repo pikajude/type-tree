@@ -8,7 +8,7 @@ license:            MIT
 license-file:       LICENSE
 author:             Jude Taylor
 maintainer:         me@jude.xyz
-tested-with:        GHC == 8.0.2, GHC == 8.2.2, GHC == 8.4.1
+tested-with:        GHC == 7.8.4, GHC == 7.10.3, GHC == 8.0.2, GHC == 8.2.2, GHC == 8.4.1
 category:           Language
 homepage:           https://github.com/pikajude/type-tree
 build-type:         Custom
@@ -28,13 +28,14 @@ library
                       Language.Haskell.TypeTree.Datatype
                       Language.Haskell.TypeTree.Leaf
   hs-source-dirs:     src
-  build-depends:      base             >= 4.9 && < 5
-                    , Cabal
+  build-depends:      base             >= 4.8 && < 5
+                    , Cabal            == 2.0.*
                     , base-compat
                     , containers
                     , mtl
                     , pretty
                     , template-haskell
+                    , zenc
   default-language:   Haskell2010
   default-extensions: NoImplicitPrelude
   other-extensions:   FlexibleInstances
