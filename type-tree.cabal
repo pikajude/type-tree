@@ -24,13 +24,13 @@ source-repository head
 
 library
   exposed-modules:    Language.Haskell.TypeTree
+                      Language.Haskell.TypeTree.ExampleDatatypes
   other-modules:      Language.Haskell.TypeTree.CheatingLift
                       Language.Haskell.TypeTree.Datatype
                       Language.Haskell.TypeTree.Leaf
   hs-source-dirs:     src
   build-depends:      base             >= 4.8 && < 5
-                    , Cabal            == 2.0.*
-                    , base-compat
+                    , base-compat      == 0.10.*
                     , containers
                     , mtl
                     , pretty

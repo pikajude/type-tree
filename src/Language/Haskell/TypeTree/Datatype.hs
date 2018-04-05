@@ -9,11 +9,11 @@ import Language.Haskell.TH
 import Prelude.Compat
 
 class IsDatatype a where
-    -- | Produce a list of type arguments
+    -- | Produce a list of constructor names
     asDatatype :: a -> Q [Name]
 
 instance IsDatatype Name where
-    asDatatype n = pure [n]
+    asDatatype = return . return
 
 instance IsDatatype TypeQ where
     asDatatype = fmap getTypes
