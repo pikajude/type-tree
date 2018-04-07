@@ -53,18 +53,14 @@ liftFlv NameS = [|NameS|]
 liftFlv (NameG x (PkgName s) (ModName y)) =
     [|NameG $(liftNS x) (PkgName $(stringE s)) (ModName $(stringE y))|]
 liftFlv (NameQ (ModName x)) = [|NameQ (ModName $(stringE x))|]
-liftFlv (NameU i) = [|NameU $(litE $ intPrimL i')|]
-    where
-        i' = intPrimToInt i
-liftFlv (NameL i) = [|NameL $(litE $ intPrimL i')|]
-    where
-        i' = intPrimToInt i
+liftFlv (NameU i) = [|NameU $(intPrimToInt i)|]
+liftFlv (NameL i) = [|NameL $(intPrimToInt i)|]
 
 #if MIN_VERSION_template_haskell(2,10,0)
-intPrimToInt = fromIntegral
+intPrimToInt i = litE (integerL (fromIntegral i))
 #else
 -- GHC <7.10 doesn't have kind-polymorphic `lift'
-intPrimToInt i = fromIntegral (I# i)
+intPrimToInt i = litE (intPrimL (fromIntegral (I# i)))
 #endif
 
 liftNS VarName = [|VarName|]
