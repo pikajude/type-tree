@@ -5,47 +5,24 @@
 
 module Language.Haskell.TypeTree.Datatype where
 
-import Data.Data
-import Data.Maybe
 import Language.Haskell.TH
 import Prelude.Compat
 
--- | More ergonomic representation of bound and unbound names of things.
-data Binding
-    = Bound { unBinding :: Name }
-    -- ^ We know this name refers to a specific thing (i.e. it's
-    -- a constructor)
-    | Unbound { unBinding :: Name }
-    -- ^ We don't know what this is (i.e. a type variable)
-    deriving (Show, Ord, Eq, Data)
-
 class IsDatatype a where
-    -- | Produce binding info and a list of type arguments
-    asDatatype :: a -> Q (Binding, [Type])
+    -- | Produce a list of constructor names
+    asDatatype :: a -> Q [Name]
 
 instance IsDatatype Name where
-    asDatatype n = pure (guess n, [])
+    asDatatype = return . return
 
 instance IsDatatype TypeQ where
-    asDatatype = fmap unwrap
+    asDatatype = fmap getTypes
 
-unwrap :: Type -> (Binding, [Type])
-unwrap = go
-  where
-    go (ConT x) = (Bound x, [])
-    go (VarT y) = (Unbound y, [])
-    go (ForallT _ _ x) = go x
-    go (AppT x y) =
-        let (hd, args) = go x
-         in (hd, args ++ [y])
-    go ListT = (Bound ''[], [])
-    go ArrowT = (Bound ''(->), [])
-    go (TupleT n) = (Bound (tupleTypeName n), [])
-    go (UnboxedTupleT n) = (Bound (unboxedTupleTypeName n), [])
-    go (SigT t _k) = go t
-    go z = error $ show z
-
--- | Convenience function.
-guess n
-    | isNothing (nameSpace n) = Unbound n
-    | otherwise = Bound n
+getTypes (ConT x) = [x]
+getTypes (VarT _) = []
+getTypes ListT = [''[]]
+getTypes ArrowT = [''(->)]
+getTypes (TupleT n) = [tupleTypeName n]
+getTypes (UnboxedTupleT n) = [unboxedTupleTypeName n]
+getTypes (AppT x y) = getTypes x ++ getTypes y
+getTypes x = error $ show x
