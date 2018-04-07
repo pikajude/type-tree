@@ -1,5 +1,10 @@
 # Revision history for type-tree
 
+## 0.2.0.1 -- 2018-04-07
+
+* `liftName` no longer produces invalid code if passed a NameU (i.e. the result of
+  `newName`).
+
 ## 0.2.0.0 -- 2018-04-07
 
 * Moved from Tree to Forest representation of types
