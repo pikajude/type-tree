@@ -1,5 +1,6 @@
-{-# Language CPP #-}
-{-# Language TemplateHaskell #-}
+{-# Language MagicHash #-}
+{-# LANGUAGE CPP #-}
+{-# LANGUAGE TemplateHaskell #-}
 
 {-
 - using TH to make a cheating version of `lift` for Name
@@ -14,6 +15,10 @@ module Language.Haskell.TypeTree.CheatingLift
 import Language.Haskell.TH
 import Language.Haskell.TH.Syntax
 import Prelude.Compat
+
+#if !MIN_VERSION_template_haskell(2,10,0)
+import GHC.Exts
+#endif
 
 #if MIN_VERSION_template_haskell(2,11,0)
 #define _KIND _
@@ -48,8 +53,19 @@ liftFlv NameS = [|NameS|]
 liftFlv (NameG x (PkgName s) (ModName y)) =
     [|NameG $(liftNS x) (PkgName $(stringE s)) (ModName $(stringE y))|]
 liftFlv (NameQ (ModName x)) = [|NameQ (ModName $(stringE x))|]
-liftFlv (NameU i) = [|NameU i|]
-liftFlv (NameL i) = [|NameL i|]
+liftFlv (NameU i) = [|NameU $(litE $ intPrimL i')|]
+    where
+        i' = intPrimToInt i
+liftFlv (NameL i) = [|NameL $(litE $ intPrimL i')|]
+    where
+        i' = intPrimToInt i
+
+#if MIN_VERSION_template_haskell(2,10,0)
+intPrimToInt = fromIntegral
+#else
+-- GHC <7.10 doesn't have kind-polymorphic `lift'
+intPrimToInt i = fromIntegral (I# i)
+#endif
 
 liftNS VarName = [|VarName|]
 liftNS DataName = [|DataName|]

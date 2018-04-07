@@ -4,7 +4,7 @@
 module Language.Haskell.TypeTree.Leaf where
 
 import Data.Data
-import Data.List
+import Data.List.Compat
 import Language.Haskell.TH.Lib
 import Language.Haskell.TH.Syntax
 import Language.Haskell.TypeTree.CheatingLift
@@ -26,7 +26,7 @@ data Leaf
     -- ^ @TypeL name arr@ represents the type constructor @name@, which has
     -- arity @arr@.
     | Recursive Leaf -- ^ Recursive field.
-    deriving (Eq, Data, Ord)
+    deriving (Eq, Data, Ord, Typeable)
 
 leafName (TypeL n _) = n
 leafName (Recursive l) = leafName l

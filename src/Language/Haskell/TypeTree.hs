@@ -9,6 +9,10 @@
 {-# LANGUAGE StandaloneDeriving #-}
 #endif
 
+#if !MIN_VERSION_containers(0,5,9)
+{-# OPTIONS_GHC -fno-warn-orphans #-}
+#endif
+
 #if MIN_VERSION_template_haskell(2,11,0)
 #define _KIND _
 #else
@@ -43,10 +47,10 @@ module Language.Haskell.TypeTree
     , IsDatatype(..)
     ) where
 
-import Control.Monad
+import Control.Monad.Compat
 import Data.Char
 import Data.Graph
-import Data.List
+import Data.List.Compat
 import qualified Data.Map as M
 import qualified Data.Set as S
 import Data.Tree
