@@ -1,0 +1,48 @@
+version: 0.2.0.1
+synopsis: Tree representations of datatypes
+description: >-
+  @type-tree@ provides TH splices for generating tree representations of
+  the types contained in datatypes. This is useful for, for example,
+  generating class instances for a deeply nested datatype.
+license: MIT
+author: Jude Taylor
+category: Language
+tested-with: GHC == 7.8.4, GHC == 7.10.3, GHC == 8.0.2, GHC == 8.2.2, GHC == 8.4.3
+extra-source-files: ChangeLog.md
+
+github: pikajude/type-tree
+
+ghc-options: -Wall
+
+custom-setup:
+  dependencies:
+    - base == 4.*
+    - Cabal
+    - cabal-doctest >= 1 && < 1.1
+
+library:
+  source-dirs: src
+  exposed-modules:
+    - Language.Haskell.TypeTree
+    - Language.Haskell.TypeTree.ExampleDatatypes
+  dependencies:
+    - base             >= 4.7 && < 5
+    - base-compat      == 0.10.*
+    - containers
+    - mtl
+    - pretty
+    - template-haskell
+  default-extensions: NoImplicitPrelude
+  other-extensions:
+    - FlexibleInstances
+    - CPP
+    - TypeSynonymInstances
+    - TemplateHaskell
+    - DeriveDataTypeable
+  ghc-options: -fno-warn-missing-signatures -fno-warn-name-shadowing
+
+tests:
+  doctest:
+    main: doctests.hs
+    source-dirs: tests
+    dependencies: [base, doctest]
