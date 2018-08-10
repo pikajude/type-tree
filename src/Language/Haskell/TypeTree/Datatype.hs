@@ -18,6 +18,7 @@ instance IsDatatype Name where
 instance IsDatatype TypeQ where
     asDatatype = fmap getTypes
 
+getTypes :: Type -> [Name]
 getTypes (ConT x) = [x]
 getTypes (VarT _) = []
 getTypes ListT = [''[]]

@@ -131,7 +131,7 @@ ttLitOpts o n = do
     tr <- ttReifyOpts o n
     [|$(listE (map liftTree tr)) :: Forest Leaf|]
   where
-    liftTree (Node n ns) = [|Node $(lift n) $(listE $ map liftTree ns)|]
+    liftTree (Node lf ns) = [|Node $(lift lf) $(listE $ map liftTree ns)|]
 
 -- | 'ttConnCompOpts' with default opts
 ttConnComp :: IsDatatype a => a -> ExpQ
@@ -161,7 +161,7 @@ ttConnCompOpts o name = do
           $(lift $ nubBy (\(x, _, _) (y, _, _) -> x == y) $ concatMap go trs)|]
   where
     go (Node ty xs) =
-        (unRec ty, unRec ty, filter (/= unRec ty) $ map (unRec . rootLabel) xs) :
+        (unLeaf ty, unLeaf ty, filter (/= unLeaf ty) $ map (unLeaf . rootLabel) xs) :
         concatMap go xs
 
 data ReifyOpts = ReifyOpts
@@ -217,7 +217,7 @@ ttReifyOpts args n' = fmap concat . mapM (go mempty) =<< asDatatype n'
                 DataConI {} -> fail "can't reify a data constructor"
                 VarI {} -> fail "can't reify an ordinary function/variable"
                 FamilyI {} -> fail "sorry, data/type instances are currently unsupported"
-                x -> error $ show x
+                other -> error $ show other
       where
         isTySyn TySynD {} = True
         isTySyn _ = False
@@ -226,7 +226,7 @@ getArity n = do
     x <- reify n
     case x of
         TyConI dec -> pure (arity dec)
-        PrimTyConI _ n _ -> pure n
+        PrimTyConI _ arr _ -> pure arr
         _ -> undefined
 
 arity (DataD _ _ xs _KIND _ _) = length xs

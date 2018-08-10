@@ -12,7 +12,8 @@ extra-source-files: ChangeLog.md
 
 github: pikajude/type-tree
 
-ghc-options: -Wall
+defaults:
+  local: /Users/judet/.code/Haskell/hpack-template/.hpack/defaults.yaml
 
 custom-setup:
   dependencies:
@@ -39,7 +40,6 @@ library:
     - TypeSynonymInstances
     - TemplateHaskell
     - DeriveDataTypeable
-  ghc-options: -fno-warn-missing-signatures -fno-warn-name-shadowing
 
 tests:
   doctest:

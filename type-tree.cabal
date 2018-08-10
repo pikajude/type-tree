@@ -2,7 +2,7 @@
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: bb4f2790065002eba8df6e7a0d7fa87069d4d730b9554572291186afa4ce274f
+-- hash: d2be5d863f00cee1903c7bbdf43cc3f94145f626f140ce39615dfc50ab994d6c
 
 name:           type-tree
 version:        0.2.0.1
@@ -41,9 +41,9 @@ library
       Paths_type_tree
   hs-source-dirs:
       src
-  default-extensions: NoImplicitPrelude
+  default-extensions: NoMonomorphismRestriction NoImplicitPrelude
   other-extensions: FlexibleInstances CPP TypeSynonymInstances TemplateHaskell DeriveDataTypeable
-  ghc-options: -Wall -fno-warn-missing-signatures -fno-warn-name-shadowing
+  ghc-options: -Weverything -Wno-unsafe -Wno-missing-local-signatures -Wno-missing-import-lists -Wno-implicit-prelude -Wno-all-missed-specialisations -Wno-safe
   build-depends:
       base >=4.7 && <5
     , base-compat ==0.10.*
@@ -60,7 +60,8 @@ test-suite doctest
       Paths_type_tree
   hs-source-dirs:
       tests
-  ghc-options: -Wall
+  default-extensions: NoMonomorphismRestriction
+  ghc-options: -Weverything -Wno-unsafe -Wno-missing-local-signatures -Wno-missing-import-lists -Wno-implicit-prelude -Wno-all-missed-specialisations -Wno-safe
   build-depends:
       base
     , doctest
