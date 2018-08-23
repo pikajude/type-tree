@@ -4,7 +4,7 @@ cabal-version: >= 1.24
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 032c886301b6cc562259d6032b6df6b64aba04cb5e1bb3d9d509d6f7d1183b49
+-- hash: c07b44ddd1fc176332dc56e7c8e9d5f4634f18d2cc2565e3466663a41b633993
 
 name:           type-tree
 version:        0.2.0.1
@@ -14,6 +14,7 @@ category:       Language
 homepage:       https://github.com/pikajude/type-tree#readme
 bug-reports:    https://github.com/pikajude/type-tree/issues
 author:         Jude Taylor
+maintainer:     me@jude.xyz
 license:        MIT
 license-file:   LICENSE
 tested-with:    GHC == 7.8.4, GHC == 7.10.3, GHC == 8.0.2, GHC == 8.2.2, GHC == 8.4.3
