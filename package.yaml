@@ -12,9 +12,6 @@ extra-source-files: ChangeLog.md
 
 github: pikajude/type-tree
 
-defaults:
-  local: /Users/judet/.code/Haskell/hpack-template/.hpack/defaults.yaml
-
 custom-setup:
   dependencies:
     - base == 4.*
